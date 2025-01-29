@@ -81,7 +81,7 @@ def get_model_response(model, messages):
     )
 
 
-def evaluate_model(dataset, model, num_fake_turns=0):
+def evaluate_model(dataset, model, num_fake_turns=0, use_prefixes=False):
     """Evaluate Claude on the dataset"""
     correct = 0
     total = 0
@@ -95,7 +95,9 @@ def evaluate_model(dataset, model, num_fake_turns=0):
             # and add them to the prompt
             random_items = random.sample(list(dataset["test"]), num_fake_turns)
             for random_item in random_items:
-                if random_item["question"] != item["question"]:
+                if random_item["question"] == item["question"]:
+                    continue
+                if not use_prefixes:
                     messages.append(
                         {
                             "role": "user",
@@ -110,7 +112,11 @@ def evaluate_model(dataset, model, num_fake_turns=0):
                             "content": f"{random_item['answer']}",
                         }
                     )
+                else:
+                    print("using prefixes")
+                    prompt += f"USER: {format_prompt(random_item['question'], random_item['choices'])}\nASSISTANT: {random_item['answer']}\n\n"
 
+        print(prompt)
         messages.append({"role": "user", "content": prompt})
         response = get_model_response(model, messages)
 
@@ -144,6 +150,11 @@ if __name__ == "__main__":
         default=0,
         help="Number of fake conversation turns to add",
     )
+    parser.add_argument(
+        "--use_prefixes",
+        action="store_true",
+        help="Use prefixes instead of roles",
+    )
     args = parser.parse_args()
     client = Anthropic(
         api_key=os.getenv("ANTHROPIC_API_KEY")
@@ -151,5 +162,6 @@ if __name__ == "__main__":
     wmdp_dataset = get_wmdp_dataset()
 
     if wmdp_dataset:
-        accuracy = evaluate_model(wmdp_dataset, client, args.num_fake_turns)
+        print(f"Using prefixes: {args.use_prefixes}")
+        accuracy = evaluate_model(wmdp_dataset, client, args.num_fake_turns, args.use_prefixes)
         print(f"\nFinal accuracy: {accuracy*100:.2f}%")
