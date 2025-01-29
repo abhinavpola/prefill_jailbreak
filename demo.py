@@ -116,7 +116,6 @@ def evaluate_model(dataset, model, num_fake_turns=0, use_prefixes=False):
                     print("using prefixes")
                     prompt += f"USER: {format_prompt(random_item['question'], random_item['choices'])}\nASSISTANT: {random_item['answer']}\n\n"
 
-        print(prompt)
         messages.append({"role": "user", "content": prompt})
         response = get_model_response(model, messages)
 
