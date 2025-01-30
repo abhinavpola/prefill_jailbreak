@@ -175,6 +175,32 @@ async def evaluate_model(
     return correct / total if total > 0 else 0
 
 
+async def zip_async_gen_list(async_gen, lst):
+    it = aiter(async_gen)  # Convert the async generator into an async iterator
+    for item in lst:
+        try:
+            entry = await anext(it)  # Get the next item from the async generator
+            yield entry, item
+        except StopAsyncIteration:
+            break  # Stop if the async generator is exhausted
+
+async def evaluate_batch(dataset, model, batch_id):
+    result_stream = await model.beta.messages.batches.results(batch_id)
+    total = 0
+    skipped = 0
+    correct = 0
+    async for entry, item in zip_async_gen_list(result_stream, list(dataset["test"])[:200]):
+        if entry.result.type == "succeeded":
+            total += 1
+            try:
+                prediction = int(entry.result.message.content[0].text.strip())
+                if prediction == item["answer"]:
+                    correct += 1
+            except ValueError:
+                skipped += 1
+    print(f"Skipped {skipped} questions due to safety filters")
+    return correct / total if total > 0 else 0
+
 async def main():
     load_dotenv()
     parser = argparse.ArgumentParser()
@@ -199,6 +225,11 @@ async def main():
         action="store_true",
         help="Use batch requests",
     )
+    parser.add_argument(
+        "--batch_id",
+        type=str,
+        help="Batch ID to read",
+    )
 
     args = parser.parse_args()
     client = AsyncAnthropic(
@@ -210,7 +241,10 @@ async def main():
     else:
         other_dataset = None
 
-    if wmdp_dataset:
+    if args.batch_id:
+        accuracy = await evaluate_batch(wmdp_dataset, client, args.batch_id)
+        print(f"\nFinal accuracy: {accuracy*100:.2f}%")
+    elif wmdp_dataset:
         print(f"Using prefixes: {args.use_prefixes}")
         accuracy = await evaluate_model(
             wmdp_dataset,
@@ -222,6 +256,8 @@ async def main():
         )
         if accuracy:
             print(f"\nFinal accuracy: {accuracy*100:.2f}%")
+        
+        
 
 
 if __name__ == "__main__":

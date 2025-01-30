@@ -23,4 +23,4 @@ Given 0, 10, 100 faked turns from the bio dataset, how does refusal rate change 
 
 Results:
 - 10-shot (cyber examples, bio question): 17/200
-- 100-shot: TODO
+- 100-shot: 25/200
