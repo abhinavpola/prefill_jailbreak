@@ -19,7 +19,7 @@ Results:
 - 100-shot: 200/200
 
 ## Scenario 3:
-Given 0, 10, 100 faked turns from the bio dataset, how does refusal rate change in the cyber or chem datasets?
+Given 0, 10, 100 faked turns from the cyber dataset, how does refusal rate change in the bio test set?
 
 Results:
 - 10-shot (cyber examples, bio question): 17/200
