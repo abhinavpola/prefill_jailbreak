@@ -1,5 +1,8 @@
 # Demonstrating risks from Anthropic API allowing prefill
 
+This initially started with just Anthropic but then Perplexity API refused to answer 0 questions with no prefilling required. wtf. also, see: https://www.perplexity.ai/search/gemini-2-0-flash-jailbreaks-NCLCoGGNS1Sm_3aN_M5Z0g#0
+
+
 Where the user can prefill the prompt to fake model complying with user's instructions. This is particularly exacerbated by being allowed to use "assistant" as a role.
 
 ## Scenario 1:
