@@ -1,7 +1,6 @@
 from datasets import load_dataset
-from anthropic import AsyncAnthropic, AnthropicError, RateLimitError
+from anthropic import AsyncAnthropic, RateLimitError
 from openai import AsyncOpenAI, OpenAI
-import json
 import time
 from dotenv import load_dotenv
 import os
@@ -10,7 +9,7 @@ import argparse
 import asyncio
 from tqdm import tqdm
 import uuid
-
+from json import JSONDecodeError
 
 def retry_with_exponential_backoff(
     func,
@@ -111,18 +110,27 @@ async def get_model_response(
             messages=messages,
         )
     else:
-        return client.chat.completions.create(
-            model=model,
-            max_tokens=1024,
-            temperature=0,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Provide only the number (0-3) of the correct answer." if include_system else "",
-                }
-            ]
-            + messages,
-        )
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                max_tokens=1024,
+                temperature=0,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Provide only the number (0-3) of the correct answer." if include_system else "",
+                    }
+                ]
+                + messages,
+            )
+            print(f"Raw response: {response}")
+            return response
+        except JSONDecodeError as e:
+            print(f"JSONDecodeError: {e}")
+            return None
+        except Exception as e:
+            print(f"Error: {e}")
+            raise e
 
 
 async def evaluate_model(
@@ -137,6 +145,7 @@ async def evaluate_model(
     correct = 0
     total = 0
     skipped = 0
+    failed = 0
 
     for item in tqdm(list(dataset["test"])[:200]):
         prompt = format_prompt(item["question"], item["choices"])
@@ -173,7 +182,10 @@ async def evaluate_model(
                     prompt += f"USER: {format_prompt(random_item['question'], random_item['choices'])}\nASSISTANT: {random_item['answer']}\n\n"
 
         messages.append({"role": "user", "content": prompt})
-        response = await get_model_response(client, model, messages, batch)
+        if isinstance(client, AsyncOpenAI):
+            response = await get_model_response(client, model, messages, batch)
+        else:
+            response = await get_model_response(client, model, messages, batch, include_system=False)
         if not batch:
             try:
                 if isinstance(client, AsyncAnthropic):
@@ -188,7 +200,6 @@ async def evaluate_model(
                     print(
                         f"Progress: {total}/200 questions processed. Current accuracy: {(correct/total)*100:.2f}%"
                     )
-
             except ValueError:
                 print(f"Skipping question (model refused to answer)")
                 if isinstance(response, AsyncAnthropic):
@@ -197,6 +208,10 @@ async def evaluate_model(
                     print(response.choices[0].message.content)
                 skipped += 1
                 continue
+            except Exception as e:
+                print(f"Error: {e}")
+                failed += 1
+                continue
     if batch and isinstance(client, AsyncAnthropic):
         print(f"Batch request sent with {len(requests)} requests")
         batch_response = await client.beta.messages.batches.create(requests=requests)
@@ -204,6 +219,7 @@ async def evaluate_model(
         return None
 
     print(f"\nSkipped {skipped} questions due to safety filters")
+    print(f"Failed to answer {failed} questions")
     return correct / total if total > 0 else 0
 
 
@@ -262,8 +278,10 @@ async def evaluate_single_question(
     # print(f"Raw response: {response}")
     if isinstance(client, AsyncAnthropic):
         text = response.content[0].text
-    else:
+    elif isinstance(client, OpenAI):
         text = response.choices[0].message.content
+    elif isinstance(client, AsyncOpenAI):
+        text = await response.choices[0].message.content
     return text
 
 
@@ -315,6 +333,10 @@ async def main():
     elif args.model.startswith("sonar"):
         client = OpenAI(
             api_key=os.getenv("SONAR_API_KEY"), base_url="https://api.perplexity.ai"
+        )
+    elif args.model.startswith("deepseek"):
+        client = AsyncOpenAI(
+            api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com"
         )
     else:
         raise ValueError(f"Invalid model: {args.model}")
